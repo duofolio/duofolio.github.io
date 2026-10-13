@@ -1,0 +1,62 @@
+name: Publish duofolio homepage
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '7,17,27,37,47,57 * * * *'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: https://duofolio.github.io/
+    steps:
+      - name: Read public website source
+        uses: actions/checkout@v6
+        with:
+          repository: duofolio/split_fiction
+          ref: master
+          persist-credentials: false
+
+      - name: Check whether the source has changed
+        id: source
+        shell: bash
+        run: |
+          source_sha="$(git rev-parse HEAD)"
+          published_sha="$(curl --fail --silent --show-error --max-time 20 \
+            'https://duofolio.github.io/source-commit.txt' || true)"
+          if [[ "$source_sha" == "$published_sha" ]]; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'The homepage already contains this source revision.'
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+            printf '%s\n' "$source_sha" > personal-site/dist/source-commit.txt
+          fi
+
+      - name: Configure Pages
+        if: steps.source.outputs.changed == 'true'
+        uses: actions/configure-pages@v5
+
+      - name: Upload website
+        if: steps.source.outputs.changed == 'true'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: personal-site/dist
+
+      - name: Publish homepage
+        if: steps.source.outputs.changed == 'true'
+        uses: actions/deploy-pages@v4
